@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>REACH NorCal — Weather Camera Dashboard</title>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: Arial, sans-serif; margin: 8px; background-color: #1a1a1a; color: #eee; }
+
+        /* Header */
+        h1 { font-size: 18px; color: #ff6b35; letter-spacing: 1px; }
+        .header {
+            display: flex; align-items: center; gap: 16px;
+            margin-bottom: 10px; border-bottom: 1px solid #444;
+            padding-bottom: 6px; flex-wrap: wrap;
+        }
+        .time-info { font-size: 13px; color: #aaa; }
+        .time-info span { margin-right: 16px; }
+
+        /* Base tile grid */
+        .tile-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 8px;
+        }
+
+        .base-tile {
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 6px;
+            overflow: hidden;
+            cursor: pointer;
+            transition: border-color 0.15s, transform 0.1s;
+        }
+        .base-tile:hover {
+            border-color: #ff6b35;
+            transform: translateY(-2px);
+        }
+
+        /* Mini camera grid inside tile */
+        .mini-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 2px;
+            padding: 2px;
+            background: #0d0d0d;
+        }
+        .mini-grid img {
+            width: 100%;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Tile label */
+        .tile-label {
+            padding: 6px 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .tile-name { font-size: 12px; font-weight: bold; color: #ff6b35; }
+        .tile-count { font-size: 10px; color: #555; }
+
+        /* Modal overlay */
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            z-index: 1000;
+            overflow-y: auto;
+            padding: 20px;
+        }
+        .modal-overlay.open { display: flex; align-items: flex-start; justify-content: center; }
+
+        .modal-box {
+            background: #1a1a1a;
+            border: 1px solid #ff6b35;
+            border-radius: 8px;
+            width: 100%;
+            max-width: 1100px;
+            padding: 16px;
+            position: relative;
+            margin: auto;
+        }
+
+        .modal-header {
+            display: flex; align-items: center; justify-content: space-between;
+            margin-bottom: 12px; border-bottom: 1px solid #333; padding-bottom: 8px;
+        }
+        .modal-title { font-size: 16px; font-weight: bold; color: #ff6b35; }
+        .modal-close {
+            background: #2a2a2a; border: 1px solid #555; border-radius: 4px;
+            color: #aaa; font-size: 16px; width: 30px; height: 30px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s;
+        }
+        .modal-close:hover { background: #ff6b35; color: #fff; border-color: #ff6b35; }
+
+        .modal-cam-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 8px;
+        }
+
+        .modal-cam {
+            position: relative;
+            background: #111;
+            border: 1px solid #2a2a2a;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+        .modal-cam img {
+            width: 100%;
+            height: auto;
+            display: block;
+            transition: opacity 0.15s;
+        }
+        .modal-cam:hover img { opacity: 0.8; }
+        .modal-cam-label {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: rgba(0,0,0,0.65);
+            font-size: 11px; color: #ddd; padding: 3px 6px;
+        }
+
+        .footer { margin-top: 10px; font-size: 11px; color: #555; }
+
+        /* Lightbox */
+        .lightbox {
+            display: none;
+            position: fixed;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.95);
+            z-index: 2000;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 16px;
+        }
+        .lightbox.open { display: flex; }
+        .lightbox img {
+            max-width: 100%;
+            max-height: calc(100vh - 80px);
+            object-fit: contain;
+            border-radius: 4px;
+            border: 1px solid #444;
+        }
+        .lightbox-label {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #aaa;
+            text-align: center;
+        }
+        .lightbox-close {
+            position: absolute;
+            top: 14px; right: 16px;
+            background: #2a2a2a; border: 1px solid #555;
+            border-radius: 4px; color: #aaa;
+            font-size: 18px; width: 34px; height: 34px;
+            cursor: pointer; display: flex; align-items: center; justify-content: center;
+            transition: all 0.15s; z-index: 2001;
+        }
+        .lightbox-close:hover { background: #ff6b35; color: #fff; border-color: #ff6b35; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>🚁 REACH NorCal — Weather Cameras</h1>
+    <div class="time-info">
+        <span id="current-time">--:--:--</span>
+        <span id="time-since-refresh">Refresh: calculating...</span>
+    </div>
+</div>
+
+<div class="tile-grid" id="tile-grid"></div>
+
+<!-- Modal -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal-box" id="modal-box">
+        <div class="modal-header">
+            <span class="modal-title" id="modal-title"></span>
+            <button class="modal-close" onclick="closeModalBtn()">✕</button>
+        </div>
+        <div class="modal-cam-grid" id="modal-cam-grid"></div>
+    </div>
+</div>
+
+<div class="footer">Click any base to view all cameras · Source: Stream IT Networks / Global Medical Response</div>
+
+<script>
+const data = [
+    { name: "Angwin Airport", imgs: ["https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_north.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_east.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_south.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_west.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_FuelPump.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_Runway.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_SouthRamp.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_up.jpg","https://www.streamitnet.com/images/reach-air/angwin/1/angwin_1_WindSock.jpg"] },
+    { name: "Clear Lake Fire Department", imgs: ["https://www.streamitnet.com/images/reach-air/clearlakefd/1/clearlakefd_1_north.jpg","https://www.streamitnet.com/images/reach-air/clearlakefd/1/clearlakefd_1_east.jpg","https://www.streamitnet.com/images/reach-air/clearlakefd/1/clearlakefd_1_south.jpg","https://www.streamitnet.com/images/reach-air/clearlakefd/1/clearlakefd_1_west.jpg","https://www.streamitnet.com/images/reach-air/clearlakefd/1/clearlakefd_1_UP.jpg"] },
+    { name: "CoAirport", imgs: ["https://www.streamitnet.com/images/reach-air/CoAirport/1/CoAirport_1_north.jpg","https://www.streamitnet.com/images/reach-air/CoAirport/1/CoAirport_1_East.jpg","https://www.streamitnet.com/images/reach-air/CoAirport/1/CoAirport_1_South.jpg","https://www.streamitnet.com/images/reach-air/CoAirport/1/CoAirport_1_West.jpg","https://www.streamitnet.com/images/reach-air/CoAirport/1/CoAirport_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/CoAirport/1/CoAirport_1_Up.jpg"] },
+    { name: "Covelo — Bill Baker Memorial", imgs: ["https://www.streamitnet.com/images/reach-air/ZCovelo/1/ZCovelo_1_North.jpg","https://www.streamitnet.com/images/reach-air/ZCovelo/1/ZCovelo_1_East.jpg","https://www.streamitnet.com/images/reach-air/ZCovelo/1/ZCovelo_1_South.jpg","https://www.streamitnet.com/images/reach-air/ZCovelo/1/ZCovelo_1_West.jpg","https://www.streamitnet.com/images/reach-air/ZCovelo/1/ZCovelo_1_Up.jpg"] },
+    { name: "Deer Park", imgs: ["https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_north.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_east.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_south.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_west.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_2.26NM@1274ft.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_dpnorth.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_dpwest.jpg","https://www.streamitnet.com/images/reach-air/deerpark/1/deerpark_1_UP.jpg"] },
+    { name: "Duncan Mills", imgs: ["https://www.streamitnet.com/images/reach-air/monterio/1/monterio_1_north.jpg","https://www.streamitnet.com/images/reach-air/monterio/1/monterio_1_east.jpg","https://www.streamitnet.com/images/reach-air/monterio/1/monterio_1_south.jpg","https://www.streamitnet.com/images/reach-air/monterio/1/monterio_1_west.jpg","https://www.streamitnet.com/images/reach-air/monterio/1/monterio_1_up.jpg"] },
+    { name: "Fort Bragg", imgs: ["https://www.streamitnet.com/images/reach-air/fortbragg/1/fortbragg_1_north.jpg","https://www.streamitnet.com/images/reach-air/fortbragg/1/fortbragg_1_east.jpg","https://www.streamitnet.com/images/reach-air/fortbragg/1/fortbragg_1_south.jpg","https://www.streamitnet.com/images/reach-air/fortbragg/1/fortbragg_1_west.jpg","https://www.streamitnet.com/images/reach-air/fortbragg/1/fortbragg_1_.8nmSafeway.jpg","https://www.streamitnet.com/images/reach-air/fortbragg/1/fortbragg_1_KDACTWR.jpg"] },
+    { name: "Garberville Airport", imgs: ["https://www.streamitnet.com/images/reach-air/016/1/016_1_north.jpg","https://www.streamitnet.com/images/reach-air/016/1/016_1_east.jpg","https://www.streamitnet.com/images/reach-air/016/1/016_1_south.jpg","https://www.streamitnet.com/images/reach-air/016/1/016_1_west.jpg","https://www.streamitnet.com/images/reach-air/016/1/016_1_NorthRwy.jpg","https://www.streamitnet.com/images/reach-air/016/1/016_1_SouthRwy.jpg","https://www.streamitnet.com/images/reach-air/016/1/016_1_UP.jpg"] },
+    { name: "Lampson Field, Lakeport", imgs: ["https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_North.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_East.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_South.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_West.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_AntennaHillNW.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_Infield.jpg","https://www.streamitnet.com/images/reach-air/LampsonFLD/1/LampsonFLD_1_Up.jpg"] },
+    { name: "Middletown Station 60", imgs: ["https://www.streamitnet.com/images/reach-air/middletown/1/middletown_1_east.jpg","https://www.streamitnet.com/images/reach-air/middletown/1/middletown_1_south.jpg","https://www.streamitnet.com/images/reach-air/middletown/1/middletown_1_west.jpg","https://www.streamitnet.com/images/reach-air/middletown/1/middletown_1_northeast.jpg","https://www.streamitnet.com/images/reach-air/middletown/1/middletown_1_northwest.jpg","https://www.streamitnet.com/images/reach-air/middletown/1/middletown_1_UP.jpg"] },
+    { name: "Orland Airport", imgs: ["https://www.streamitnet.com/images/reach-air/orlandairport/1/orlandairport_1_north.jpg","https://www.streamitnet.com/images/reach-air/orlandairport/1/orlandairport_1_east.jpg","https://www.streamitnet.com/images/reach-air/orlandairport/1/orlandairport_1_south.jpg","https://www.streamitnet.com/images/reach-air/orlandairport/1/orlandairport_1_west.jpg"] },
+    { name: "Santa Rosa Airport (KSTS)", imgs: ["https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_north.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_south.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_west.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_Downtown.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_eastSutter.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_infield.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_northeast.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_southwest.jpg","https://www.streamitnet.com/images/reach-air/ksts/1/ksts_1_UP.jpg"] },
+    { name: "Shelter Cove", imgs: ["https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_North.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_East.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_South.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_West.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_UP.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_Windsock.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_ZNorthWest.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_ZSouth.jpg","https://www.streamitnet.com/images/reach-air/Shelter_Cove/1/Shelter_Cove_1_ZSouthWest.jpg"] },
+    { name: "St. Joseph Hospital", imgs: ["https://www.streamitnet.com/images/reach-air/StJoseph/1/StJoseph_1_North.jpg","https://www.streamitnet.com/images/reach-air/StJoseph/1/StJoseph_1_East.jpg","https://www.streamitnet.com/images/reach-air/StJoseph/1/StJoseph_1_South.jpg","https://www.streamitnet.com/images/reach-air/StJoseph/1/StJoseph_1_West.jpg","https://www.streamitnet.com/images/reach-air/StJoseph/1/StJoseph_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/StJoseph/1/StJoseph_1_Up.jpg"] },
+    { name: "Ukiah Airport", imgs: ["https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_North.jpg","https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_East.jpg","https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_South.jpg","https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_West.jpg","https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_AntennaHillEast.jpg","https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/Ukiah/1/Ukiah_1_Up.jpg"] },
+    { name: "Williams Glider Port", imgs: ["https://www.streamitnet.com/images/reach-air/williams-gliderport/1/williams-gliderport_1_north.jpg","https://www.streamitnet.com/images/reach-air/williams-gliderport/1/williams-gliderport_1_east.jpg","https://www.streamitnet.com/images/reach-air/williams-gliderport/1/williams-gliderport_1_south.jpg","https://www.streamitnet.com/images/reach-air/williams-gliderport/1/williams-gliderport_1_west.jpg","https://www.streamitnet.com/images/reach-air/williams-gliderport/1/williams-gliderport_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/williams-gliderport/1/williams-gliderport_1_Up.jpg"] },
+    { name: "Willits Airport", imgs: ["https://www.streamitnet.com/images/reach-air/willits/1/willits_1_north.jpg","https://www.streamitnet.com/images/reach-air/willits/1/willits_1_east.jpg","https://www.streamitnet.com/images/reach-air/willits/1/willits_1_south.jpg","https://www.streamitnet.com/images/reach-air/willits/1/willits_1_west.jpg","https://www.streamitnet.com/images/reach-air/willits/1/willits_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/willits/1/willits_1_up.jpg"] },
+    { name: "Willows Airport", imgs: ["https://www.streamitnet.com/images/reach-air/willows-airport/1/willows-airport_1_north.jpg","https://www.streamitnet.com/images/reach-air/willows-airport/1/willows-airport_1_east.jpg","https://www.streamitnet.com/images/reach-air/willows-airport/1/willows-airport_1_south.jpg","https://www.streamitnet.com/images/reach-air/willows-airport/1/willows-airport_1_west.jpg","https://www.streamitnet.com/images/reach-air/willows-airport/1/willows-airport_1_Up.jpg"] },
+    { name: "Bodega Bay (Testing)", imgs: ["https://www.streamitnet.com/images/reach-air/ZBodegaBAY/1/ZBodegaBAY_1_Easttest.jpg","https://www.streamitnet.com/images/reach-air/ZBodegaBAY/1/ZBodegaBAY_1_Helipad.jpg","https://www.streamitnet.com/images/reach-air/ZBodegaBAY/1/ZBodegaBAY_1_Northtest.jpg","https://www.streamitnet.com/images/reach-air/ZBodegaBAY/1/ZBodegaBAY_1_Southtest.jpg","https://www.streamitnet.com/images/reach-air/ZBodegaBAY/1/ZBodegaBAY_1_UPtest.jpg","https://www.streamitnet.com/images/reach-air/ZBodegaBAY/1/ZBodegaBAY_1_Westtest.jpg"] },
+];
+
+function camLabel(url) {
+    const filename = url.split('/').pop().replace('.jpg','');
+    return filename.replace(/^[^_]+_\d+_/, '').replace(/([A-Z])/g, ' $1').trim();
+}
+
+// Build tiles
+const tileGrid = document.getElementById('tile-grid');
+data.forEach((base, i) => {
+    const tile = document.createElement('div');
+    tile.className = 'base-tile';
+    tile.onclick = () => openModal(i);
+
+    // Mini grid — up to 6 images
+    const preview = base.imgs.slice(0, 6);
+    tile.innerHTML = `
+        <div class="mini-grid">
+            ${preview.map(url => `<img src="${url}" alt="" loading="lazy">`).join('')}
+        </div>
+        <div class="tile-label">
+            <span class="tile-name">${base.name}</span>
+            <span class="tile-count">${base.imgs.length} cams</span>
+        </div>
+    `;
+    tileGrid.appendChild(tile);
+});
+
+// Modal
+function openModal(i) {
+    const base = data[i];
+    document.getElementById('modal-title').textContent = base.name;
+    const grid = document.getElementById('modal-cam-grid');
+    grid.innerHTML = base.imgs.map(url => `
+        <div class="modal-cam" onclick="openLightbox('${url}', '${camLabel(url)}')" style="cursor:pointer;">
+                <img src="${url}" alt="${camLabel(url)}">
+            <div class="modal-cam-label">${camLabel(url)}</div>
+        </div>
+    `).join('');
+    document.getElementById('modal-overlay').classList.add('open');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeModalBtn() {
+    document.getElementById('modal-overlay').classList.remove('open');
+    document.body.style.overflow = '';
+}
+
+function closeModal(e) {
+    if (e.target === document.getElementById('modal-overlay')) closeModalBtn();
+}
+
+
+// Lightbox
+function openLightbox(url, label) {
+    document.getElementById('lightbox-img').src = url;
+    document.getElementById('lightbox-label').textContent = label;
+    document.getElementById('lightbox').classList.add('open');
+}
+function closeLightboxBtn() {
+    document.getElementById('lightbox').classList.remove('open');
+}
+function closeLightbox(e) {
+    if (e.target === document.getElementById('lightbox')) closeLightboxBtn();
+}
+// Update escape key handler to also close lightbox
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        if (document.getElementById('lightbox').classList.contains('open')) {
+            closeLightboxBtn();
+        } else {
+            closeModalBtn();
+        }
+    }
+});
+
+
+// Clock
+function updateTime() {
+    const now = new Date();
+    document.getElementById('current-time').textContent = now.toLocaleTimeString();
+    const last = localStorage.getItem('reach_norcal_refresh');
+    if (last) {
+        const diff = Math.floor((now - new Date(last)) / 1000);
+        document.getElementById('time-since-refresh').textContent =
+            'Last refresh: ' + Math.floor(diff/60) + 'm ' + (diff%60) + 's ago';
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    localStorage.setItem('reach_norcal_refresh', new Date().toISOString());
+    updateTime();
+    setInterval(updateTime, 1000);
+});
+</script>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox(event)">
+    <button class="lightbox-close" onclick="closeLightboxBtn()">✕</button>
+    <img id="lightbox-img" src="" alt="">
+    <div class="lightbox-label" id="lightbox-label"></div>
+</div>
+</body>
+</html>
